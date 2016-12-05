@@ -1,6 +1,7 @@
 %Try to map the texture from image to personalized model
 %% Load Data
 imgname = 'Tower3_ImgFpts';
+modelname = 'Tower3.mat';
 Pos = 1;
 struct = load(imgname);
 Data1 = struct.Data;
@@ -8,10 +9,8 @@ Data1 = struct.Data;
 ver1 = Data1.fpts(:,2*Pos-1:2*Pos);
 ver2 = Data1.new_model{Pos};
 Tri = Data1.tri{Pos};
-% ibadZ = Data1.badZ_idx{Pos};
-% Irreg = Data1.Irreg_idx{Pos};
 ImgFpt_nz_idx = Data1.ImgFpt_nz_idx{Pos};
-% Z = Data1.Z_depth{Pos};
+
 Img = cell(1,5);
 ImgH = zeros(1,5);
 ImgW = zeros(1,5);
@@ -24,10 +23,6 @@ faces2 = Tri;
 [ Area1 ] = MeshArea(Tri,[ver1(ImgFpt_nz_idx,:),zeros(28,1)]);
 [ Area2 ] = MeshArea(Tri,[ver2(ImgFpt_nz_idx,:),zeros(28,1)]);
 Scale = sqrt( max(Area1,Area2) / min(Area1,Area2) );%Used to scale z depth.
-
-% [select_idx,~] = find(ImgFpt_nz_idx);%ImgFpt_nz_idx is a logical matix, here find 0 index, which points will not be used later.
-% select_idx(ibadZ,:) = []; % remove badZ points.
-% select_idx(Irreg,:) = []; % remove unused triangle points. 
 
 Pt1 = [ver1(ImgFpt_nz_idx,1:2),zeros(28,1)];
 Pt2 = [ver2(ImgFpt_nz_idx,1:2),zeros(28,1)];
@@ -42,6 +37,29 @@ end
 
 %  plotMesh( [Pt1(:,1),Pt1(:,2)], faces1, 'k');
 %     axis equal; title('Subdivided Mesh (2D Image)');
+%% Let's find out Z depth.
+[ ~, Z ] = VisibleVertices( Pt2, ver2(ImgFpt_nz_idx,1:3), Tri, [0,0,1], min(ver2(ImgFpt_nz_idx,3)) );
+
+%find idx so that Z~=nan;
+idx = (1:length(Z))';
+badZ = isnan(Z);
+goodZ = ~badZ;
+igoodZ = idx(goodZ);
+ibadZ = sort( idx(badZ), 'descend' );
+if numel( ibadZ ) > 0
+    Z = Z(igoodZ);
+%     Pt1 = Pt1(igoodZ,:);
+%     Pt2 = Pt2(igoodZ,:);%Pt2 is the first column and second column of new_model
+    [ faces2, Pt2_new,Irreg ] = RemoveTri( faces2, Pt2, igoodZ );
+    if numel( Irreg ) > 0
+        Pt1( Irreg, : ) = [];
+        Pt2( Irreg, : ) = [];
+        Z( Irreg, : ) = [];
+    end
+end
+
+% new_model_test = [newVer(:,1:2),Z(:,1)];
+
 
 L2i(:,1) = round( Pt1(:,1) );
 L2i(:,2) = round( Pt1(:,2) );
@@ -57,7 +75,7 @@ VCData_B( :, 1 ) = double( B(Ind) ) / 255;
 
 model_color = [ VCData_R, VCData_G, VCData_B ];
 
-ph = patch( 'Faces', faces1, 'Vertices', [ Pt2(:,1), Pt2(:,2) , zeros(size(Pt2,1),1)]); axis image; hold on;
+ph = patch( 'Faces', faces2, 'Vertices', [ Pt2_new(:,1), Pt2_new(:,2) , Z(:,1)]); axis image; hold on;
 set( ph, 'EdgeColor', 'none' );
 % campos( [campos_t(1) campos_t(2) campos_t(3)] );    % camera pose
 xlabel('X');ylabel('Y');zlabel('Z'); title('Personalized Model');
